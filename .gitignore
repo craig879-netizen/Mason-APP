@@ -1,0 +1,4 @@
+build/
+Mason.xcodeproj/
+*.zip
+.DS_Store

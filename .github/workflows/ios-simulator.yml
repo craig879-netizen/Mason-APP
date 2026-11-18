@@ -1,0 +1,64 @@
+name: iOS 26 Simulator
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  simulator:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode 26
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$XC" ]; then sudo xcode-select -s "$XC"; fi
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Pick iOS 26 iPhone simulator
+        run: echo "UDID=$(python3 .github/scripts/pick_simulator.py)" >> "$GITHUB_ENV"
+
+      - name: Build for simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project Mason.xcodeproj -scheme Mason -configuration Debug \
+            -destination "id=$UDID" -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 40
+
+      - name: Run in simulator and take screenshots
+        run: |
+          chmod +x .github/scripts/run_in_simulator.sh
+          .github/scripts/run_in_simulator.sh "$UDID" build/Build/Products/Debug-iphonesimulator/Mason.app screenshots
+
+      - name: Package simulator build (for Appetize.io)
+        run: ditto -c -k --sequesterRsrc --keepParent build/Build/Products/Debug-iphonesimulator/Mason.app Mason-simulator.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mason-simulator-app
+          path: Mason-simulator.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simulator-screenshots
+          path: screenshots
+
+      - name: Commit screenshots to the branch
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add screenshots
+          git diff --cached --quiet || git commit -m "Update simulator screenshots [skip ci]"
+          git push
