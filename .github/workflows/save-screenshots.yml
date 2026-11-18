@@ -1,0 +1,59 @@
+name: Save simulator screenshots
+
+# Runs after every simulator run (or by hand for a given run) and commits that
+# run's screenshots into screenshots/<device>/. Only the devices that produced
+# screenshots are replaced, so a failed device keeps its previous pictures.
+on:
+  workflow_run:
+    workflows: ["Simulators (iOS 15 – 26)"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "ID of the simulator run to take screenshots from"
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: save-screenshots
+  cancel-in-progress: false
+
+jobs:
+  save:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: shots-*
+          path: incoming
+          merge-multiple: true
+          run-id: ${{ github.event.workflow_run.id || inputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Commit screenshots
+        run: |
+          if [ ! -d incoming ] || [ -z "$(ls -A incoming)" ]; then
+            echo "That run produced no screenshots."
+            exit 0
+          fi
+          mkdir -p screenshots
+          for dir in incoming/*/; do
+            name=$(basename "$dir")
+            rm -rf "screenshots/$name"
+            cp -R "$dir" "screenshots/$name"
+            echo "Saved $name"
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add screenshots
+          git diff --cached --quiet && exit 0
+          git commit -m "Update simulator screenshots [skip ci]"
+          git push
