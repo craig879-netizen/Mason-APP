@@ -28,6 +28,10 @@ install_legacy_runtime() {
   pkg=$(find "$mnt" -maxdepth 1 -name '*.pkg' | head -1)
   pkgutil --expand-full "$pkg" "$work/expanded" >&2
   src=$(find "$work/expanded" -type d -name '*.simruntime' -prune | head -1)
+  # In the old packages the payload itself is the bundle (Payload/Contents/Info.plist).
+  if [ -z "$src" ] && [ -f "$work/expanded/Payload/Contents/Info.plist" ]; then
+    src="$work/expanded/Payload"
+  fi
   if [ -z "$src" ]; then
     echo "No .simruntime bundle found inside $pkg" >&2
     find "$work/expanded" -maxdepth 4 >&2
