@@ -1,4 +1,4 @@
-name: Simulators (iOS 13 – 26)
+name: Simulators (iOS 15 – 26)
 
 on:
   push:
@@ -52,10 +52,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # iOS 13 and 14 simulators cannot run here: Apple blocks iOS 13 on macOS newer
+        # than 12 and iOS 14.5 on macOS newer than 13.3, and GitHub has no Macs that old.
         include:
-          - { label: iPhone-11-Pro-Max-iOS-13,  os: "13.0", device: "iPhone 11 Pro Max", family: iPhone, runner: macos-15-intel }
-          - { label: iPad-iPadOS-13,            os: "13.7", device: "iPad Pro (11-inch) (2nd generation)", family: iPad, runner: macos-15-intel }
-          - { label: iPad-iPadOS-14,            os: "14.5", device: "iPad Pro (11-inch) (2nd generation)", family: iPad, runner: macos-15-intel }
           - { label: iPad-iPadOS-15,            os: "15.5", device: "iPad Pro (11-inch) (3rd generation)", family: iPad, runner: macos-15-intel }
           - { label: iPad-iPadOS-16,            os: "16.4", device: "iPad Pro (11-inch) (4th generation)", family: iPad, runner: macos-26 }
           - { label: iPad-iPadOS-17,            os: "17.5", device: "iPad Pro (11-inch) (4th generation)", family: iPad, runner: macos-26 }

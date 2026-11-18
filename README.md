@@ -11,14 +11,13 @@ Every push runs `.github/workflows/ios-simulator.yml` on GitHub's Mac machines. 
 
 | Device | OS |
 | --- | --- |
-| iPhone 11 Pro Max | iOS 13.0 (the version it shipped with) |
-| iPad Pro 11-inch | iPadOS 13.7 |
-| iPad Pro 11-inch | iPadOS 14.5 |
 | iPad Pro 11-inch | iPadOS 15.5 |
 | iPad Pro 11-inch | iPadOS 16.4 |
 | iPad Pro 11-inch | iPadOS 17.5 |
 | iPad Pro 11-inch (M4) | iPadOS 18 |
 | iPhone 17 Pro | iOS 26 |
+
+iOS 13 and 14 (for example the iPhone 11 Pro Max on the iOS 13.0 it shipped with) can't run on GitHub: Apple's simulator refuses iOS 13 on macOS newer than 12, and iOS 14.5 on macOS newer than 13.3. The app still supports iOS 13. To see it there, use a Mac running macOS 12 or older with Xcode 11–13.
 
 Each run screenshots every screen in light and dark mode and commits them to `screenshots/<device>/`. Missing simulator versions are downloaded from Apple during the run.
 
