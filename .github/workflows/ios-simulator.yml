@@ -1,4 +1,4 @@
-name: iOS 26 Simulator
+name: Simulators (iOS 13 – 26)
 
 on:
   push:
@@ -7,10 +7,14 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: simulators-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  simulator:
+  build:
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -19,46 +23,94 @@ jobs:
           XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
           if [ -n "$XC" ]; then sudo xcode-select -s "$XC"; fi
           xcodebuild -version
-          xcrun simctl list runtimes
 
       - name: Generate Xcode project
         run: |
           brew install xcodegen
           xcodegen generate
 
-      - name: Pick iOS 26 iPhone simulator
-        run: echo "UDID=$(python3 .github/scripts/pick_simulator.py)" >> "$GITHUB_ENV"
-
-      - name: Build for simulator
+      - name: Build universal simulator app (arm64 + x86_64, iOS 13+)
         run: |
           set -o pipefail
           xcodebuild -project Mason.xcodeproj -scheme Mason -configuration Debug \
-            -destination "id=$UDID" -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO build | tail -n 40
-
-      - name: Run in simulator and take screenshots
-        run: |
-          chmod +x .github/scripts/run_in_simulator.sh
-          .github/scripts/run_in_simulator.sh "$UDID" build/Build/Products/Debug-iphonesimulator/Mason.app screenshots
-
-      - name: Package simulator build (for Appetize.io)
-        run: ditto -c -k --sequesterRsrc --keepParent build/Build/Products/Debug-iphonesimulator/Mason.app Mason-simulator.zip
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build ONLY_ACTIVE_ARCH=NO ARCHS="arm64 x86_64" \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 60
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/Build/Products/Debug-iphonesimulator/Mason.app Mason-simulator.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: Mason-simulator-app
           path: Mason-simulator.zip
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: simulator-screenshots
-          path: screenshots
+  simulate:
+    needs: build
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: iPhone-11-Pro-Max-iOS-13,  os: "13.0", device: "iPhone 11 Pro Max", family: iPhone, runner: macos-15-intel }
+          - { label: iPad-iPadOS-13,            os: "13.7", device: "iPad Pro (11-inch) (2nd generation)", family: iPad, runner: macos-15-intel }
+          - { label: iPad-iPadOS-14,            os: "14.5", device: "iPad Pro (11-inch) (2nd generation)", family: iPad, runner: macos-15-intel }
+          - { label: iPad-iPadOS-15,            os: "15.5", device: "iPad Pro (11-inch) (3rd generation)", family: iPad, runner: macos-15-intel }
+          - { label: iPad-iPadOS-16,            os: "16.4", device: "iPad Pro (11-inch) (4th generation)", family: iPad, runner: macos-26 }
+          - { label: iPad-iPadOS-17,            os: "17.5", device: "iPad Pro (11-inch) (4th generation)", family: iPad, runner: macos-26 }
+          - { label: iPad-iPadOS-18,            os: "18",   device: "iPad Pro 11-inch (M4)", family: iPad, runner: macos-26 }
+          - { label: iPhone-17-Pro-iOS-26,      os: "26",   device: "iPhone 17 Pro", family: iPhone, runner: macos-26 }
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Commit screenshots to the branch
-        if: github.event_name == 'push'
+      - uses: actions/download-artifact@v4
+        with:
+          name: Mason-simulator-app
+
+      - name: Show runner
         run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Create simulator
+        run: |
+          chmod +x .github/scripts/*.sh
+          UDID=$(.github/scripts/prepare_simulator.sh "${{ matrix.os }}" "${{ matrix.device }}" "${{ matrix.family }}")
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+
+      - name: Run Mason and take screenshots
+        run: |
+          ditto -x -k Mason-simulator.zip app
+          .github/scripts/run_in_simulator.sh "$UDID" app/Mason.app "shots/${{ matrix.label }}"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shots-${{ matrix.label }}
+          path: shots
+          if-no-files-found: ignore
+
+  publish:
+    needs: simulate
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shots-*
+          path: incoming
+          merge-multiple: true
+        continue-on-error: true
+      - name: Commit screenshots
+        run: |
+          rm -rf screenshots && mkdir -p screenshots
+          if [ -d incoming ]; then cp -R incoming/. screenshots/; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
           git add screenshots
-          git diff --cached --quiet || git commit -m "Update simulator screenshots [skip ci]"
+          git diff --cached --quiet && exit 0
+          git commit -m "Update simulator screenshots [skip ci]"
+          git pull --rebase
           git push
